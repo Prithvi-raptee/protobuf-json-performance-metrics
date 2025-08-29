@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message BackendDataPacket {
+  double battery = 1;
+  double throttle = 2;
+  double speed = 3;
+  int32 dpad = 4;
+  int32 killSwitch = 5;
+  int32 lightBeam = 6;
+  int32 indicators = 7;
+  int32 sideStand = 8;
+  int32 absIndication = 9;
+  int32 modeStatus = 10;
+  int32 motorStatus = 11;
+  int32 pduState = 12;
+  int32 chargingState = 13;
+  int32 eslState = 14;
+  int32 brakeStatus = 15;
+  double batteryTemp = 16;
+  double chargingCurrent = 17;
+  double chargingVoltage = 18;
+  double gpsLat = 19;
+  double gpsLng = 20;
+  Vector3 acc = 21;
+  Vector3 gyro = 22;
+  double odometer = 23;
+  double tripA = 24;
+  int32 regenLevel = 25;
+  double whpkm = 26;
+  int32 motorTemp = 27;
+  int32 chargingModeAC = 28;
+  double batteryVoltage = 29;
+  int32 motorTorque = 30;
+  repeated int32 errors = 31;
+  repeated int32 alerts = 32;
+  double pressureFW = 33;
+  double pressureRW = 34;
+  double tempFW = 35;
+  double tempRW = 36;
+  double batteryFW = 37;
+  double batteryRW = 38;
+}
