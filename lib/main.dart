@@ -9,7 +9,6 @@ import 'dart:collection';
 
 import 'src/generated/ev_data.pb.dart';
 
-
 class IsolateMessage {
   final String type;
   final dynamic payload;
@@ -373,10 +372,24 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
                 'Avg. Size:',
                 '${stats.avgSize.toStringAsFixed(2)} bytes',
               ),
+              const SizedBox(height: 8),
               _buildStatRow(
                 'Avg. RTT:',
                 '${stats.avgRoundTripTime.toStringAsFixed(2)} µs',
               ),
+              _buildStatRow(
+                'Min RTT:',
+                '${stats.minRtt.toStringAsFixed(2)} µs',
+              ),
+              _buildStatRow(
+                'Max RTT:',
+                '${stats.maxRtt.toStringAsFixed(2)} µs',
+              ),
+              _buildStatRow(
+                'RTT Jitter (σ):',
+                '${stats.rttJitter.toStringAsFixed(2)} µs',
+              ),
+              const SizedBox(height: 8),
               _buildStatRow(
                 'Avg. Serialize:',
                 '${stats.avgSerializationTime.toStringAsFixed(2)} µs',
@@ -384,6 +397,15 @@ class _BenchmarkPageState extends State<BenchmarkPage> {
               _buildStatRow(
                 'Avg. Deserialize:',
                 '${stats.avgDeserializationTime.toStringAsFixed(2)} µs',
+              ),
+              const SizedBox(height: 8),
+              _buildStatRow(
+                'Total Data:',
+                '${(stats.totalDataTransferred / 1024).toStringAsFixed(2)} KB',
+              ),
+              _buildStatRow(
+                'Throughput:',
+                '${stats.throughput.toStringAsFixed(2)} KB/s',
               ),
             ],
           ],
@@ -461,7 +483,6 @@ void clientIsolate(ClientIsolateArgs args) async {
         messageBuffer.add(data);
         var allBytes = messageBuffer.toBytes();
 
-        // TCP Framing: Loop to process all complete messages in the buffer
         while (allBytes.length >= 4) {
           final length = ByteData.view(
             allBytes.buffer,
@@ -469,7 +490,6 @@ void clientIsolate(ClientIsolateArgs args) async {
           if (allBytes.length >= length + 4) {
             final message = allBytes.sublist(4, length + 4);
 
-            // A message has been successfully received and framed
             if (sendTimeQueue.isNotEmpty) {
               final clientSendTime = sendTimeQueue.removeFirst();
               stats.addRoundTripTime(
@@ -486,14 +506,12 @@ void clientIsolate(ClientIsolateArgs args) async {
               stats.addDeserializationTime(deserWatch.elapsedMicroseconds);
             }
 
-            // Remove the processed message from the buffer
             allBytes = allBytes.sublist(length + 4);
           } else {
-            break; // Not enough data for a full message, wait for more
+            break;
           }
         }
 
-        // Update the buffer with any remaining partial data
         messageBuffer = BytesBuilder()..add(allBytes);
       },
       onDone: () => mainSendPort.send(
@@ -532,11 +550,9 @@ void clientIsolate(ClientIsolateArgs args) async {
 
       stats.addSize(bytesToSend.length);
 
-      // TCP Framing: Prepend message with its length (4-byte little-endian)
       final length = bytesToSend.length;
       final lengthBytes = ByteData(4)..setUint32(0, length, Endian.little);
 
-      // Add send time to queue just before sending
       sendTimeQueue.add(DateTime.now().microsecondsSinceEpoch);
 
       socket?.add(lengthBytes.buffer.asUint8List());
@@ -663,6 +679,12 @@ class BenchmarkStats {
   double avgSerializationTime = 0;
   double avgDeserializationTime = 0;
 
+  double minRtt = 0;
+  double maxRtt = 0;
+  double rttJitter = 0; // Standard Deviation
+  double totalDataTransferred = 0; // in bytes
+  double throughput = 0; // in KB/s
+
   void addSize(int bytes) => _sizes.add(bytes);
   void addRoundTripTime(int microseconds) => _roundTripTimes.add(microseconds);
   void addSerializationTime(int microseconds) =>
@@ -671,6 +693,7 @@ class BenchmarkStats {
       _deserializationTimes.add(microseconds);
 
   void calculateAverages() {
+    // Averages
     if (_sizes.isNotEmpty)
       avgSize = _sizes.reduce((a, b) => a + b) / _sizes.length;
     if (_roundTripTimes.isNotEmpty)
@@ -685,16 +708,43 @@ class BenchmarkStats {
           _deserializationTimes.reduce((a, b) => a + b) /
           _deserializationTimes.length;
 
+    // Detailed RTT stats
+    if (_roundTripTimes.isNotEmpty) {
+      minRtt = _roundTripTimes.reduce(min).toDouble();
+      maxRtt = _roundTripTimes.reduce(max).toDouble();
+
+      // Calculate Jitter (Standard Deviation)
+      double mean = avgRoundTripTime;
+      double variance =
+          _roundTripTimes.map((x) => pow(x - mean, 2)).reduce((a, b) => a + b) /
+          _roundTripTimes.length;
+      rttJitter = sqrt(variance);
+    }
+
+    // Throughput stats
+    if (_sizes.isNotEmpty) {
+      totalDataTransferred = _sizes.reduce((a, b) => a + b).toDouble();
+      // Test duration is 10 seconds. Convert bytes/sec to KB/sec.
+      throughput = (totalDataTransferred / 10) / 1024;
+    }
+
     print('--- $type Benchmark Results ---');
     print('Total Messages: $count');
     print('Avg. Size: ${avgSize.toStringAsFixed(2)} bytes');
     print('Avg. Round-Trip Time: ${avgRoundTripTime.toStringAsFixed(2)} µs');
+    print('Min RTT: ${minRtt.toStringAsFixed(2)} µs');
+    print('Max RTT: ${maxRtt.toStringAsFixed(2)} µs');
+    print('RTT Jitter (σ): ${rttJitter.toStringAsFixed(2)} µs');
     print(
       'Avg. Serialization Time: ${avgSerializationTime.toStringAsFixed(2)} µs',
     );
     print(
       'Avg. Deserialization Time: ${avgDeserializationTime.toStringAsFixed(2)} µs',
     );
+    print(
+      'Total Data Transferred: ${(totalDataTransferred / 1024).toStringAsFixed(2)} KB',
+    );
+    print('Throughput: ${throughput.toStringAsFixed(2)} KB/s');
     print('------------------------\n');
   }
 }
